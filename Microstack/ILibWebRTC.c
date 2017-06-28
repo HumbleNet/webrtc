@@ -42,6 +42,12 @@ limitations under the License.
 	#define ILibWebRTC_LoggingServerPort 0
 #endif
 
+#if defined( SSL_CTX_set_ecdh_auto )
+// use it
+#else
+#define SSL_CTX_set_ecdh_auto( ctx, IGNORED ) \
+SSL_CTX_set_tmp_ecdh(ctx, EC_KEY_new_by_curve_name(NID_X9_62_prime256v1));
+#endif
 
 #define ILibStunClient_TIMEOUT 2
 #define ILibRUDP_WindowSize 32000

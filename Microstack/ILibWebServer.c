@@ -21,7 +21,7 @@ limitations under the License.
 #include <crtdbg.h>
 #endif
 
-#if defined(WIN32) && !defined(snprintf) && (_MSC_PLATFORM_TOOLSET <= 120)
+#if defined(WIN32) && !defined(snprintf) && (_MSC_FULL_VER <= 180000000)
 #define snprintf(dst, len, frm, ...) _snprintf_s(dst, len, _TRUNCATE, frm, __VA_ARGS__)
 #endif
 

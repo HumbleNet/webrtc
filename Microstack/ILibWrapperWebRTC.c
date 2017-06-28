@@ -35,6 +35,13 @@ limitations under the License.
 #include <crtdbg.h>
 #endif
 
+#if defined( SSL_CTX_set_ecdh_auto )
+// use it
+#else
+#define SSL_CTX_set_ecdh_auto( ctx, IGNORED ) \
+SSL_CTX_set_tmp_ecdh(ctx, EC_KEY_new_by_curve_name(NID_X9_62_prime256v1));
+#endif
+
 #define ILibWrapper_WebRTC_ConnectionFactory_ConnectionBucketSize 16	// *MUST* be a power of 2
 #define ILibWrapper_WebRTC_Connection_DataChannelsBucketSize 16			// *MUST* be a power of 2
 
@@ -297,7 +304,7 @@ int ILibWrapper_SdpToBlock(char* sdp, int sdpLen, int *isActive, char **username
 	return(ptr);
 }
 
-int ILibWrapper_BlockToSDPEx(char* block, int blockLen, char** username, char** password, char **sdp, char* serverReflexiveCandidateAddress, unsigned short serverReflexiveCandidatePort)
+int ILibWrapper_BlockToSDPEx(char* block, int blockLen, char** username, char** password, char **sdp, const char* serverReflexiveCandidateAddress, unsigned short serverReflexiveCandidatePort)
 {
 	char* sdpTemplate1 = "v=0\r\no=MeshAgent %u 0 IN IP4 0.0.0.0\r\ns=SIP Call\r\nt=0 0\r\na=ice-ufrag:%s\r\na=ice-pwd:%s\r\na=fingerprint:sha-256 %s\r\nm=application 1 DTLS/SCTP 5000\r\nc=IN IP4 0.0.0.0\r\na=sctpmap:5000 webrtc-datachannel 16\r\na=setup:%s\r\n";
 	char* sdpTemplateRelay = "a=candidate:%d %d UDP %d %s %d typ relay raddr %u.%u.%u.%u %d\r\n";
@@ -864,6 +871,11 @@ char* ILibWrapper_WebRTC_Connection_SetOffer(ILibWrapper_WebRTC_Connection conne
 	ILibRemoteLogging_printf(ILibChainGetLogger(obj->mFactory->mChain), ILibRemoteLogging_Modules_WebRTC_STUN_ICE, ILibRemoteLogging_Flags_VerbosityLevel_1, "[ILibWrapperWebRTC] Set ICE/Offer: <br/>%s", offer);
 
 	obj->offerBlockLen = ILibStun_SetIceOffer2(obj->mFactory->mStunModule, obj->remoteOfferBlock, obj->remoteOfferBlockLen, obj->offerBlock != NULL ? obj->localUsername : NULL, obj->offerBlock != NULL ? 8 : 0, obj->offerBlock != NULL ? obj->localPassword : NULL, obj->offerBlock != NULL ? 32 : 0, &obj->offerBlock);
+	if( obj->offerBlockLen <= 0 ) {
+		ILibRemoteLogging_printf(ILibChainGetLogger(obj->mFactory->mChain), ILibRemoteLogging_Modules_WebRTC_STUN_ICE, ILibRemoteLogging_Flags_VerbosityLevel_1, "[ILibWrapperWebRTC] Unable to set new offer");
+		return NULL;
+	}
+
 	ILibWrapper_BlockToSDP(obj->offerBlock, obj->offerBlockLen, obj->isOfferInitiator, &un, &up, &sdp);
 
 	ILibRemoteLogging_printf(ILibChainGetLogger(obj->mFactory->mChain), ILibRemoteLogging_Modules_WebRTC_STUN_ICE, ILibRemoteLogging_Flags_VerbosityLevel_1, "[ILibWrapperWebRTC] Return ICE/Response: <br/>%s", sdp);
@@ -913,6 +925,11 @@ char* ILibWrapper_WebRTC_Connection_GenerateOffer(ILibWrapper_WebRTC_Connection 
 	char *sdp;
 	char* username,*password;
 
+	if( offerLen <= 0 ) {
+		ILibRemoteLogging_printf(ILibChainGetLogger(obj->mFactory->mChain), ILibRemoteLogging_Modules_WebRTC_STUN_ICE, ILibRemoteLogging_Flags_VerbosityLevel_1, "[ILibWrapperWebRTC] Unable to generate new offer");
+		return NULL;
+	}
+
 	obj->isOfferInitiator = 1;
 	ILibWrapper_BlockToSDP(offer, offerLen, obj->isOfferInitiator, &username, &password, &sdp);
 
@@ -959,6 +976,22 @@ char* ILibWrapper_WebRTC_Connection_AddServerReflexiveCandidateToLocalSDP(ILibWr
 
 	return(sdp);
 }
+
+char* ILibWrapper_WebRTC_Connection_AddServerReflexiveCandidateToRemoteSDP(ILibWrapper_WebRTC_Connection connection, const char*address, int port)
+{
+    ILibWrapper_WebRTC_ConnectionStruct *obj = (ILibWrapper_WebRTC_ConnectionStruct*) connection;
+    char *sdp;
+    char *username;
+    char *password;
+    
+    ILibWrapper_BlockToSDPEx(obj->remoteOfferBlock, obj->remoteOfferBlockLen, &username, &password, &sdp, address, port);
+    
+    free(username);
+    free(password);
+    
+    return(sdp);
+}
+
 
 void ILibWrapper_WebRTC_Connection_Pause(ILibWrapper_WebRTC_Connection connection)
 {

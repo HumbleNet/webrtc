@@ -42,6 +42,10 @@ limitations under the License.
 #endif
 
 #if defined(WINSOCK2)
+#ifndef _WINSOCK_DEPRECATED_NO_WARNINGS
+//silence warnings about inet_addr and WSASocketA
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <iphlpapi.h>
@@ -93,12 +97,12 @@ char utils_HexTable2[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '
 #endif
 
 #if defined(WIN32) || defined(_WIN32_WCE)
-static sem_t ILibChainLock = { 0 };
+/*static*/ sem_t ILibChainLock = { 0 };
 #else
 #ifndef errno
 extern int errno;
 #endif
-static sem_t ILibChainLock;
+/*static*/ sem_t ILibChainLock;
 #endif
 
 #ifdef WIN32
@@ -119,7 +123,7 @@ void* gILibChain = NULL;	 // Global Chain Instance used for Remote Logging when 
 #define INET_SOCKADDR_LENGTH(x) ((x==AF_INET6?sizeof(struct sockaddr_in6):sizeof(struct sockaddr_in)))
 
 long long ILibGetUptime();
-static int ILibChainLock_RefCounter = 0;
+/*static*/ int ILibChainLock_RefCounter = 0;
 
 static int malloc_counter = 0;
 void* dbg_malloc(int sz)
@@ -4986,7 +4990,7 @@ void ILibLifeTime_Check(void *LifeTimeMonitorObject, fd_set *readset, fd_set *wr
 	while (node != NULL)
 	{
 		Temp = (struct LifeTimeMonitorData*)ILibLinkedList_GetDataFromNode(node);
-		if (Temp->ExpirationTick < CurrentTick)
+		if (Temp->ExpirationTick <= CurrentTick)
 		{
 			ILibQueue_EnQueue(EventQueue, Temp);
 			node = ILibLinkedList_Remove(node);
@@ -5038,7 +5042,7 @@ void ILibLifeTime_Check(void *LifeTimeMonitorObject, fd_set *readset, fd_set *wr
 	if (LifeTimeMonitor->NextTriggerTick != -1 && *blocktime > (int)(LifeTimeMonitor->NextTriggerTick - CurrentTick))
 	{
 		int delta = (int)(LifeTimeMonitor->NextTriggerTick - CurrentTick);
-		if (delta < 1000) *blocktime = 1000; else *blocktime = delta;
+		if (delta > 1000) *blocktime = 1000; else *blocktime = delta;
 	}
 }
 

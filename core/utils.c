@@ -44,15 +44,25 @@ limitations under the License.
 #include <openssl/rand.h>
 #include <openssl/hmac.h>
 
+
+// openssl RAND_bytes does Bad Things when called from multiple threads
+// causes insane amounts of warnings from helgrind
+// wrap the calls in a lock to shut it up
+static sem_t sslRandomLock;
+
+
 // Setup OpenSSL
 void __fastcall util_openssl_init()
 {
-	char* tbuf[64];
+	sem_init(&sslRandomLock, 0, 1);
+
 #ifdef WIN32
+	char* tbuf[64];
 	HMODULE g_hAdvLib = NULL;
 	BOOLEAN (APIENTRY *g_CryptGenRandomPtr)(void*, ULONG) = NULL;
 #endif
 #ifdef _POSIX
+	char* tbuf[64];
 	int l;
 #endif
 
@@ -61,13 +71,15 @@ void __fastcall util_openssl_init()
 	CRYPTO_malloc_debug_init();
 	//CRYPTO_set_mem_debug_options(V_CRYPTO_MDEBUG_ALL);
 	MemCheck_start();
-	CRYPTO_mem_ctrl(CRYPTO_MEM_CHECK_ON);
+	MemCheck_on();
 #endif
 */
 
+#ifndef OPENSSL_IS_BORINGSSL
 	SSLeay_add_all_algorithms();
 	SSLeay_add_all_ciphers();
 	SSLeay_add_all_digests();
+#endif
 
 	SSL_library_init(); // TWO LEAKS COMING FROM THIS LINE. Seems to be a well known OpenSSL problem.
 	SSL_load_error_strings();
@@ -111,7 +123,9 @@ void __fastcall util_openssl_uninit()
 	CRYPTO_cleanup_all_ex_data();
 	//sk_SSL_COMP_free(SSL_COMP_get_compression_methods());		// Does something, but it causes heap corruption...
 	//CONF_modules_unload(1);									// Does nothing.
+#ifndef OPENSSL_IS_BORINGSSL
 	CONF_modules_free();
+#endif
 	EVP_cleanup();
 	ERR_free_strings();
 	ERR_remove_state(0);
@@ -126,6 +140,7 @@ void __fastcall util_openssl_uninit()
 	if (bio_err != NULL) { BIO_free(bio_err); bio_err = NULL; }
 #endif
 */
+	sem_destroy(&sslRandomLock);
 }
 
 // Frees a block of memory returned from this module.
@@ -470,6 +485,7 @@ error:
 	return -1;
 }
 
+#ifndef OPENSSL_IS_BORINGSSL
 int __fastcall util_to_p12(struct util_cert cert, char *password, char** data)
 {
 	PKCS12 *p12;
@@ -493,6 +509,11 @@ int __fastcall util_from_p12(char* data, int datalen, char* password, struct uti
 	PKCS12_free(p12);
 	return r;
 }
+#endif // ifndef OPENSSL_IS_BORINGSSL
+
+#ifdef OPENSSL_IS_BORINGSSL
+#define X509V3_EXT_conf_nid X509V3_EXT_nconf_nid
+#endif
 
 // Add extension using V3 code: we can set the config file as NULL because we wont reference any other sections.
 int __fastcall util_add_ext(X509 *cert, int nid, char *value)
@@ -517,11 +538,13 @@ void __fastcall util_printcert(struct util_cert cert)
 	X509_print_fp(stdout,cert.x509);
 }
 
+#ifndef OPENSSL_IS_BORINGSSL
 void __fastcall util_printcert_pk(struct util_cert cert)
 {
 	if (cert.pkey == NULL) return;
 	RSA_print_fp(stdout,cert.pkey->pkey.rsa,0);
 }
+#endif
 
 // Creates a X509 certificate, if rootcert is NULL this creates a root (self-signed) certificate.
 // Is the name parameter is NULL, the hex value of the hash of the public key will be the subject name.
@@ -539,7 +562,9 @@ int __fastcall util_mkCert(struct util_cert *rootcert, struct util_cert* cert, i
 	char nameStr[(UTIL_HASHSIZE * 2) + 2];
 	BIGNUM *oBigNbr;
 
-	CRYPTO_mem_ctrl(CRYPTO_MEM_CHECK_ON);
+#ifndef OPENSSL_IS_BORINGSSL
+	MemCheck_on();
+#endif
 
 	if (initialcert != NULL)
 	{
@@ -649,7 +674,6 @@ err:
 	return(0);
 }
 
-
 int __fastcall util_keyhash(struct util_cert cert, char* result)
 {
 	if (cert.x509 == NULL) return -1;
@@ -735,6 +759,7 @@ error:
 	return -1;
 }
 
+#ifndef OPENSSL_IS_BORINGSSL
 // Sign this block of data, the first 32 bytes of the block must be avaialble to add the certificate hash.
 int __fastcall util_sign(struct util_cert cert, char* data, int datalen, char** signature)
 {
@@ -914,11 +939,14 @@ error:
 	if (data2 != NULL) free(data2);
 	return 0;
 }
+#endif // ifndef OPENSSL_IS_BORINGSSL
 
 // Generates a random string of data. TODO: Use Hardware RNG if possible
 void __fastcall util_random(int length, char* result)
 {
+	sem_wait(&sslRandomLock);
 	RAND_bytes((unsigned char*)result, length);
+	sem_post(&sslRandomLock);
 }
 
 // Generates a random text string, useful for HTTP nonces.
@@ -965,6 +993,7 @@ int __fastcall util_rsadecrypt(struct util_cert cert, char* data, int datalen, c
 	return 0;
 }
 
+#ifndef OPENSSL_IS_BORINGSSL
 // Verify the RSA signature of a block using SHA1 hash
 int __fastcall util_rsaverify(X509 *cert, char* data, int datalen, char* sign, int signlen)
 {
@@ -989,6 +1018,7 @@ int __fastcall util_rsaverify(X509 *cert, char* data, int datalen, char* sign, i
 	RSA_free(rsa);
 	return r;
 }
+#endif // ifndef OPENSSL_IS_BORINGSSL
 
 // We need these as the master key for most of the symetric crypto methods
 extern unsigned int g_SessionRandomId;

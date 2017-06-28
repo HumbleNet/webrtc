@@ -24,7 +24,9 @@ limitations under the License.
 #if defined(WIN32) && !defined(_WIN32_WCE)
 #define _CRTDBG_MAP_ALLOC
 #include <crtdbg.h>
+#if defined(_MSC_VER) && (_MSC_FULL_VER <= 180000000)
 #define snprintf(dst, len, frm, ...) _snprintf_s(dst, len, _TRUNCATE, frm, __VA_ARGS__)
+#endif
 #endif
 
 
