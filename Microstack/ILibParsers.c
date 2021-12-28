@@ -8232,7 +8232,6 @@ int ILibTime_ParseEx(char *timeString, time_t *val)
 		}
 		else
 		{
-			free(startTime);
 			//
 			// Invalid Date portion
 			//

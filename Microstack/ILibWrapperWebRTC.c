@@ -27,6 +27,10 @@ limitations under the License.
 #include "ILibWrapperWebRTC.h"
 #include "ILibRemoteLogging.h"
 
+#if defined(WIN32) && !defined(strncpy) && _MSC_VER < 1900
+#define strncpy(dst, src, len) strcpy_s(dst, len, src)
+#endif
+
 #if defined(WIN32) && !defined(_WIN32_WCE)
 #define _CRTDBG_MAP_ALLOC
 #include <crtdbg.h>
@@ -1099,8 +1103,8 @@ char* ILibWrapper_WebRTC_Connection_SetOffer(ILibWrapper_WebRTC_Connection conne
 	ILibRemoteLogging_printf(ILibChainGetLogger(obj->mFactory->ChainLink.ParentChain), ILibRemoteLogging_Modules_WebRTC_STUN_ICE, ILibRemoteLogging_Flags_VerbosityLevel_1, "[ILibWrapperWebRTC] Return ICE/Response: <br/>%s", sdp);
 
 	ILibWebRTC_SetUserObject(obj->mFactory->mStunModule, un, obj);
-	memcpy_s(obj->localUsername, sizeof(obj->localUsername), un, strnlen_s(un, sizeof(obj->localUsername)));
-	memcpy_s(obj->localPassword, sizeof(obj->localPassword), up, strnlen_s(up, sizeof(obj->localPassword)));
+	strncpy(obj->localUsername, un, sizeof(obj->localUsername));
+	strncpy(obj->localPassword, up, sizeof(obj->localPassword));
 
 	free(un);
 	free(up);
